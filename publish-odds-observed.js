@@ -66,12 +66,23 @@ function parseArgs(argv) {
   return args;
 }
 
+// Self-contained on purpose: this file is mirrored byte-for-byte to the public
+// cranelightstudio/odds-transparency repository, so it cannot depend on sibling
+// helpers. firebase-admin v14 only exposes the modular entry points; resolve them
+// from the caller's environment first, then from the Functions package.
 function loadAdmin() {
-  try {
-    return require("firebase-admin");
-  } catch (_) {
-    return require(path.join("..", "functions", "node_modules", "firebase-admin"));
-  }
+  const {createRequire} = require("module");
+  const functionsRequire = createRequire(path.join(__dirname, "..", "functions", "package.json"));
+  const load = (id) => {
+    try {
+      return require(id);
+    } catch (_) {
+      return functionsRequire(id);
+    }
+  };
+  const app = load("firebase-admin/app");
+  const firestore = load("firebase-admin/firestore");
+  return {initializeApp: app.initializeApp, getFirestore: firestore.getFirestore};
 }
 
 // Pure aggregation over audit rows: [{bannerId, count, rarityCounts, hardPityFiveCount}]
@@ -182,7 +193,7 @@ async function main() {
 
   const admin = loadAdmin();
   admin.initializeApp({projectId: args.project});
-  const db = admin.firestore();
+  const db = admin.getFirestore();
 
   const rows = [];
   // Trailing full history per banner (operations spec phase 1); stream to bound memory.
